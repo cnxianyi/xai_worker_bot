@@ -1,6 +1,6 @@
 # xai worker bot
 
-这是一个基于 cloudflare Workers 环境实现的无服务器 Telegram bo. 集成ai聊天
+这是一个基于 cloudflare Workers 环境实现的无服务器 Telegram bot. 集成ai聊天
 
 ## 功能
 
@@ -31,9 +31,9 @@
    - `ADMIN_CHAT_ID`：自己的 Telegram Chat ID。
    - `XAI_TOKEN`：外部 AI 服务的访问令牌。
    - `GROK_MODE`：AI 模型名称。
-    - 如 `grok-2-1212`
+        - 如 `grok-2-1212` `grok-2-vision-1212`
    - `TEMPERATURE`：AI 回答的随机性参数（数值越大回答越随机）
-    - 默认为 0
+        - 默认为 0
 
 3. **修改代码**
     1. 重新进入Workers 和 Pages
