@@ -1,5 +1,6 @@
 const TelegramAuthToken = TELEGRAM_AUTH_TOKEN
 const AdminChatId = ADMIN_CHAT_ID
+let GuestChatId = GUEST_CHAT_ID.split(",")
 const XaiToken = XAI_TOKEN
 const GrokMode = GROK_MODE
 const Temperature = TEMPERATURE
@@ -55,8 +56,8 @@ async function processUpdate(update) {
             chatId = message.chat.id;
             userText = message.text;
 
-            if (chatId != AdminChatId) {
-                const errInfo = `https://api.telegram.org/bot${TelegramAuthToken}/sendMessage?chat_id=${chatId}&text=权限不足`;
+            if (chatId != AdminChatId && !GuestChatId.includes(chatId+"")) {
+                const errInfo = `https://api.telegram.org/bot${TelegramAuthToken}/sendMessage?chat_id=${chatId}&text=权限不足:${chatId}`;
                 await fetch(errInfo);
                 return
             }
