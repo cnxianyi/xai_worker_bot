@@ -56,36 +56,27 @@ async function processUpdate(update) {
             chatId = message.chat.id;
             userText = message.text;
 
-            if (chatId != AdminChatId && !GuestChatId.includes(chatId+"")) {
+            if (chatId != AdminChatId && !GuestChatId.includes(chatId + "")) {
                 const errInfo = `https://api.telegram.org/bot${TelegramAuthToken}/sendMessage?chat_id=${chatId}&text=权限不足:${chatId}`;
                 await fetch(errInfo);
-                return
+                return;
             }
 
             messages.push({ role: "user", content: userText });
 
-            if (messages.length % 100 == 0) {
-                const errInfo = `https://api.telegram.org/bot${TelegramAuthToken}/sendMessage?chat_id=${chatId}&text=当前上下文长度为${messages.length}`;
-                await fetch(errInfo);
-            }
-
             if (userText == "/clear") {
-                let responseText = `清除历史记录成功`
+                let responseText = `清除历史记录成功`;
                 const url = `https://api.telegram.org/bot${TelegramAuthToken}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(responseText)}&parse_mode=Markdown`;
                 await fetch(url);
-
-                messages = []
-
-                return
+                messages = [];
+                return;
             } else if (userText.startsWith("/set")) {
-                let str = userText.slice(4).trim()
-
+                let str = userText.slice(4).trim();
                 messages.unshift({ "role": "system", "content": str });
-
-                let responseText = `添加个性化信息为: ` + str
+                let responseText = `添加个性化信息为: ` + str;
                 const url = `https://api.telegram.org/bot${TelegramAuthToken}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(responseText)}&parse_mode=Markdown`;
                 await fetch(url);
-                return
+                return;
             }
 
             const myHeaders = new Headers();
@@ -94,7 +85,7 @@ async function processUpdate(update) {
             const raw = JSON.stringify({
                 messages,
                 "model": GrokMode.trim(),
-                "stream": false,
+                "stream": true,
                 "temperature": +Temperature
             });
 
@@ -106,27 +97,56 @@ async function processUpdate(update) {
             };
 
             const response = await fetch(`https://api.x.ai/v1/chat/completions`, requestOptions);
-            const result = await response.json();
 
-            if (!result?.choices) {
-                const err = `https://api.telegram.org/bot${TelegramAuthToken}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(JSON.stringify(result))}&parse_mode=Markdown`;
-                await fetch(err);
-                return
+            if (!response.ok) {
+                throw new Error(`API request failed with status ${response.status}`);
             }
 
-            const responseText = result?.choices[0]?.message?.content || "未知错误🙅,请尝试输入 /clear";
+            const reader = response.body.getReader();
+            let decoder = new TextDecoder();
+            let buffer = '';
+            let accumulatedText = '';
+            let messageId;
+            let lastUpdateTime = Date.now();
 
-            messages.push({ role: "assistant", content: responseText });
+            const initialMessageUrl = `https://api.telegram.org/bot${TelegramAuthToken}/sendMessage?chat_id=${chatId}&text=...&parse_mode=Markdown`;
+            const initialMessageResponse = await fetch(initialMessageUrl);
+            const initialMessageResult = await initialMessageResponse.json();
+            messageId = initialMessageResult.result.message_id;
 
-            if (messages.length % 100 == 0) {
-                const errInfo = `https://api.telegram.org/bot${TelegramAuthToken}/sendMessage?chat_id=${chatId}&text=当前上下文长度为${messages.length}`;
-                await fetch(errInfo);
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                let parts = buffer.split('\n');
+                for (let part of parts) {
+                    if (part.startsWith('data:')) {
+                        try {
+                            let data = JSON.parse(part.slice(5));
+                            if (data?.choices?.[0]?.delta?.content) {
+                                let newText = data.choices[0].delta.content;
+                                accumulatedText += newText;
+                                const currentTime = Date.now();
+                                if (currentTime - lastUpdateTime >= 500) {
+                                    let appendUrl = `https://api.telegram.org/bot${TelegramAuthToken}/editMessageText?chat_id=${chatId}&message_id=${messageId}&text=${encodeURIComponent(accumulatedText)}&parse_mode=Markdown`;
+                                    await fetch(appendUrl);
+                                    lastUpdateTime = currentTime;
+                                }
+                            }
+                        } catch (e) {
+
+                        }
+                    }
+                }
+                buffer = parts.pop() || '';
             }
 
-            const url = `https://api.telegram.org/bot${TelegramAuthToken}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(responseText)}&parse_mode=Markdown`;
-            await fetch(url);
-        } else {
-            return;
+            let finalUrl = `https://api.telegram.org/bot${TelegramAuthToken}/editMessageText?chat_id=${chatId}&message_id=${messageId}&text=${encodeURIComponent(accumulatedText)}&parse_mode=Markdown`;
+            await fetch(finalUrl);
+
+            messages.push({ role: "assistant", content: accumulatedText });
         }
     } catch (error) {
         const errorMessage = `⚠️ 机器人错误: ${error.message}`;
